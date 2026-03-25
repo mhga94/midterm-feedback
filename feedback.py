@@ -13,6 +13,7 @@ VERIFICATION LOGIC:
   Students need to supply that word to unlock their feedback.
 """
 
+import csv
 import json
 import re
 import streamlit as st
@@ -92,7 +93,7 @@ fb_ma: dict[str, str] = {
     "Ev" : """
         **Ev**
 
-        Prompting: I like your prompting style a lot and you avoided the cardinal sin of just pasting your code that wasn't working into the LLM - great work on that. You are inquisitive and structured in your responses, I particularly liked your deep dive on len() versus .\\__len__() and the debate on object orientation. 
+        Prompting: I like your prompting style a lot and you avoided the cardinal sin of just pasting your code that wasn't working into the LLM - great work on that. You are inquisitive and structured in your responses, I particularly liked your deep dive on len() versus .__len__() and the debate on object orientation. 
 
         Coverage of concepts: You got the LLM to give you a good range of problems. Manipulating awkward data like nested dictionaries and lists is an important skill - the recursive function in Q6 was a neat piece of code. 
 
@@ -183,7 +184,7 @@ fb_ma: dict[str, str] = {
 
         Coverage of concepts: Nice pacing of the problems and coverage of the concepts involved. 
 
-        Creativity: The way you've guided the LLM on creating the assignment is excellent. You've also been creative in your conversations, looking to learn about debugging techniques and other momnents where you show great interaction and curiosity. 
+        Creativity: The way you've guided the LLM on creating the assignment is excellent. You've also been creative in your conversations, looking to learn about debugging techniques and other moments where you show great interaction and curiosity. 
 
         Overall: You've demonstrated a strong command of the concepts in the framework of a well-designed midterm that reflects your interests. Great work, Sophie!
 
@@ -192,81 +193,142 @@ fb_ma: dict[str, str] = {
 
 # Maps student first name → path to their .ipynb file
 submission_code: dict[str, str] = {
-    "Ayush" : r"Ayush_GLBL5050_Midterm_Ayush.ipynb",
+    "Ayush"   : r"Ayush_GLBL5050_Midterm_Ayush.ipynb",
     "Anthony" : r"Anthony_Midterm.ipynb",
-    "Ben" : r"Ben_Midterm_Exam.ipynb",
-    "Chi" : r"Chi_GLBL_5050_midterm.ipynb",
-    "Chris" : r"Chris_midterm_climate_analysis.ipynb",
-    "Ev" : r"Evan_python_midterm_exam.ipynb",
+    "Ben"     : r"Ben_Midterm_Exam.ipynb",
+    "Chi"     : r"Chi_GLBL_5050_midterm.ipynb",
+    "Chris"   : r"Chris_midterm_climate_analysis.ipynb",
+    "Ev"      : r"Evan_python_midterm_exam.ipynb",
     "Linhang" : r"Linhang_Midterm(2).ipynb",
-    "Maria" : r"Maria_midterm_exam.ipynb",
-    "Nick" : r"Nick_midterm.ipynb",
-    "Peter" : r"Pete_Midterm_python_global_affairs_v3.ipynb",
-    "Roshan" : r"Roshan_Take_Home_Midterm_FINAL.ipynb",
+    "Maria"   : r"Maria_midterm_exam.ipynb",
+    "Nick"    : r"Nick_midterm.ipynb",
+    "Peter"   : r"Pete_Midterm_python_global_affairs_v3.ipynb",
+    "Roshan"  : r"Roshan_Take_Home_Midterm_FINAL.ipynb",
     "Seiyoon" : r"Seiyoon_Midterm.ipynb",
-    "Sophie" : r"Sophie_GLBL5050 Mid-term Exam_Sophie Gao.ipynb"
+    "Sophie"  : r"Sophie_GLBL5050 Mid-term Exam_Sophie Gao.ipynb"
 }
+
+# Path to the CSV file containing Gemini Flash 2.5 feedback
+# Expected format: col 0 = student first name, col 2 = AI feedback
+AI_FEEDBACK_CSV = "midterm_feedback_results_ORIGINAL.csv"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
- 
+
 def _extract_second_word(notebook_path: str) -> str | None:
     """Return the second whitespace-delimited word found in the notebook."""
     try:
         nb = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return None
- 
+
     for cell in nb.get("cells", []):
         source = cell.get("source", "")
-        # source can be a list of strings or a single string
         if isinstance(source, list):
             source = "".join(source)
         words = re.split(r"\s+", source.strip())
         words = [w for w in words if w]   # drop empties
-        if words:
+        if len(words) >= 2:
             return words[1]
     return None
- 
- 
+
+
 def _normalise(word: str) -> str:
     """Lower-case and strip surrounding punctuation for lenient matching."""
     return word.strip().lower().strip("\"'`#*_")
- 
- 
+
+
+def _md_to_html(text: str) -> str:
+    """Convert a simple markdown string to HTML for rendering inside a div."""
+    text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
+    paras = re.split(r'\n{2,}', text.strip())
+    html_parts = []
+    for para in paras:
+        lines = para.strip().splitlines()
+        if all(l.strip().startswith(("- ", "* ")) for l in lines if l.strip()):
+            items = "".join(
+                f"<li>{l.strip().lstrip('-* ')}</li>" for l in lines if l.strip()
+            )
+            html_parts.append(f"<ul>{items}</ul>")
+        else:
+            html_parts.append(f"<p>{'<br>'.join(lines)}</p>")
+    return "\n".join(html_parts)
+
+
+@st.cache_data
+def _load_ai_feedback(csv_path: str) -> dict[str, str]:
+    """Load AI feedback from CSV. Col 0 = name, col 2 = feedback."""
+    result: dict[str, str] = {}
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            next(reader, None)  # skip header row
+            for row in reader:
+                if len(row) >= 3:
+                    name = row[0].strip()
+                    feedback = row[2].strip()
+                    if name:
+                        result[name] = feedback
+    except FileNotFoundError:
+        pass
+    return result
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
- 
+
 st.set_page_config(
     page_title="Midterm Feedback",
     page_icon="📝",
-    layout="centered",
+    layout="wide",
 )
- 
+
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown(
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap');
- 
+
     html, body, [class*="css"] {
         font-family: 'DM Sans', sans-serif;
     }
- 
+
     /* Page background */
     .stApp {
         background: #f5f0e8;
     }
- 
+
+    /* Card column label */
+    .card-label {
+        font-family: 'DM Sans', sans-serif;
+        font-weight: 600;
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #888;
+        margin-bottom: 0.5rem;
+    }
+    .card-label span {
+        display: inline-block;
+        background: #1a1a2e;
+        color: #f5f0e8;
+        border-radius: 4px;
+        padding: 0.15rem 0.55rem;
+        font-size: 0.75rem;
+    }
+    .ai-label span {
+        background: #1a6b5a;
+    }
+
     /* Card wrapper */
     .feedback-card {
         background: #ffffff;
         border: 1px solid #e0d8cc;
         border-radius: 12px;
         padding: 2rem 2.5rem;
-        margin-top: 1.5rem;
+        margin-top: 0.5rem;
         box-shadow: 0 4px 24px rgba(0,0,0,0.06);
     }
     .feedback-card p, .feedback-card li {
@@ -282,7 +344,7 @@ st.markdown(
         color: #1a1a2e;
         margin-top: 1.2rem;
     }
- 
+
     /* Header strip */
     .header-strip {
         background: #1a1a2e;
@@ -302,10 +364,10 @@ st.markdown(
         opacity: 0.7;
         font-size: 0.9rem;
     }
- 
+
     /* Streamlit input label tweak */
     label { font-weight: 600 !important; color: #737270 !important; }
- 
+
     /* Button */
     .stButton > button {
         background: #1a1a2e;
@@ -320,21 +382,21 @@ st.markdown(
         width: 100%;
     }
     .stButton > button:hover { opacity: 0.85; }
- 
+
     /* Divider */
     hr { border-color: #e0d8cc; }
- 
+
     /* Hide Streamlit branding */
     #MainMenu, footer { visibility: hidden; }
     </style>
     """,
     unsafe_allow_html=True,
 )
- 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # UI
 # ─────────────────────────────────────────────────────────────────────────────
- 
+
 st.markdown(
     """
     <div class="header-strip">
@@ -344,9 +406,9 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
- 
+
 st.write(":color[Enter your details below to retrieve your personalised feedback.]{foreground='#737270'}")
- 
+
 with st.form("login_form"):
     name_input = st.text_input("Your first name", placeholder="e.g. Alice")
     word_input = st.text_input(
@@ -354,65 +416,63 @@ with st.form("login_form"):
         placeholder="Open your .ipynb and check the second word - including #",
     )
     submitted = st.form_submit_button("View my feedback →")
- 
+
 if submitted:
     name = name_input.strip()
- 
+
     # ── 1. Name check ────────────────────────────────────────────────────────
     if name not in submission_code:
         st.error("⚠️  That first name wasn't found. Check the spelling and try again.")
         st.stop()
- 
+
     # ── 2. Notebook verification ─────────────────────────────────────────────
     nb_path = submission_code[name]
     second_word = _extract_second_word(nb_path)
- 
+
     if second_word is None:
         st.error(
             f"⚠️  Could not read the notebook at `{nb_path}`. "
             "Please contact your TA."
         )
         st.stop()
- 
+
     if _normalise(word_input) != _normalise(second_word):
         st.error(
             "❌  The word you entered doesn't match your notebook. "
             "Open your .ipynb file and copy the second word you see - don't forget that # counts as a word!"
         )
         st.stop()
- 
+
     # ── 3. Show feedback ─────────────────────────────────────────────────────
     feedback = fb_ma.get(name, "No feedback entry found for your name. Contact your TA.")
- 
+
+    ai_feedback_all = _load_ai_feedback(AI_FEEDBACK_CSV)
+    ai_feedback_raw = ai_feedback_all.get(name, "")
+    ai_feedback = ai_feedback_raw if ai_feedback_raw else "AI feedback coming soon!"
+
     st.success(f"✅  Identity confirmed — here is your feedback, {name}!")
- 
-    # Convert the feedback markdown to HTML so it renders inside a single div
-    # (handles **bold**, bullet lines, and paragraph breaks)
-    import re as _re
- 
-    def _md_to_html(text: str) -> str:
-        # Bold
-        text = _re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
-        # Split into paragraphs on blank lines
-        paras = _re.split(r'\n{2,}', text.strip())
-        html_parts = []
-        for para in paras:
-            lines = para.strip().splitlines()
-            # Detect bullet list
-            if all(l.strip().startswith(("- ", "* ")) for l in lines if l.strip()):
-                items = "".join(
-                    f"<li>{l.strip().lstrip('-* ')}</li>" for l in lines if l.strip()
-                )
-                html_parts.append(f"<ul>{items}</ul>")
-            else:
-                html_parts.append(f"<p>{'<br>'.join(lines)}</p>")
-        return "\n".join(html_parts)
- 
-    feedback_html = _md_to_html(feedback)
-    st.markdown(
-        f'<div class="feedback-card">{feedback_html}</div>',
-        unsafe_allow_html=True,
-    )
- 
+
+    col_ma, col_ai = st.columns(2)
+
+    with col_ma:
+        st.markdown(
+            '<div class="card-label"><span>📋 Matthew\'s feedback</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="feedback-card">{_md_to_html(feedback)}</div>',
+            unsafe_allow_html=True,
+        )
+
+    with col_ai:
+        st.markdown(
+            '<div class="card-label ai-label"><span>✨ Gemini Flash 2.5\'s feedback</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="feedback-card">{_md_to_html(ai_feedback)}</div>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown("<br>", unsafe_allow_html=True)
     st.caption("Questions about your grade? Reach out during office hours.")
