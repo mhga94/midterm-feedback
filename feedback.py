@@ -210,7 +210,7 @@ submission_code: dict[str, str] = {
 
 # Path to the CSV file containing Gemini Flash 2.5 feedback
 # Expected format: col 0 = student first name, col 2 = AI feedback
-AI_FEEDBACK_CSV = "midterm_feedback_results_ORIGINAL.csv"
+AI_FEEDBACK_CSV = "midterm_feedback_results.csv"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
