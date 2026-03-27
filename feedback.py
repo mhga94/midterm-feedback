@@ -197,7 +197,7 @@ submission_code: dict[str, str] = {
     "Anthony" : r"Anthony_Midterm.ipynb",
     "Ben"     : r"Ben_Midterm_Exam.ipynb",
     "Chi"     : r"Chi_GLBL_5050_midterm.ipynb",
-    "Chris"   : r"Chris_midterm_climate_analysis.ipynb",
+    "Chris"   : r"Chris_midterm_climate_analysis(1).ipynb",
     "Ev"      : r"Evan_python_midterm_exam.ipynb",
     "Linhang" : r"Linhang_Midterm(2).ipynb",
     "Maria"   : r"Maria_midterm_exam.ipynb",
